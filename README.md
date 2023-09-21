@@ -1,2 +1,1 @@
-# MSService
 # ms-notifier
