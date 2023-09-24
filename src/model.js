@@ -1,15 +1,22 @@
 import * as venom from "venom-bot";
-import { venomConfig, queueName, rabbitMQUrl } from "./helpers.js";
+import {
+  venomConfig,
+  queueName,
+  rabbitMQUrl,
+  deleteTokensFile,
+} from "./helpers.js";
 import * as amqp from "amqplib";
 
-export let client;
-export let isWhatsAppConnected = false;
+export const clients = {};
+export const isWhatsAppConnected = {};
 
-export async function connectToWhatsApp() {
+export async function createWhatsAppInstance(sessionId) {
+  deleteTokensFile(sessionId);
+
   return new Promise((resolve, reject) => {
     venom
       .create(
-        { session: "user" },
+        { session: sessionId },
         (base64Qrimg) => {
           resolve(base64Qrimg);
         },
@@ -22,16 +29,18 @@ export async function connectToWhatsApp() {
         },
         (browser, waPage) => {
           console.log("Browser PID:", browser.process().pid);
-          waPage.screenshot({ path: "screenshot.png" });
+          waPage.screenshot({ path: `${sessionId}_screenshot.png` });
         }
       )
       .then(async (venomClient) => {
-        client = venomClient;
-        isWhatsAppConnected = true;
+        clients[sessionId] = venomClient;
+        isWhatsAppConnected[sessionId] = true;
 
         setInterval(() => {
-          consumeQueueAndSendWhatsapp();
-        }, 10000);
+          if (isWhatsAppConnected[sessionId]) {
+            consumeQueueAndSendWhatsapp(sessionId);
+          }
+        }, 60 * 1000);
       })
       .catch((error) => {
         console.log(error);
@@ -40,34 +49,33 @@ export async function connectToWhatsApp() {
   });
 }
 
-export async function disconnectWhatsApp() {
+export async function disconnectWhatsApp(sessionId) {
+  const client = clients[sessionId];
   if (client) {
     client
       .close()
       .then(() => {
-        isWhatsAppConnected = false;
-        res.send(true);
+        isWhatsAppConnected[sessionId] = false;
+        delete clients[sessionId];
       })
       .catch((error) => {
         console.error("Erro ao desconectar WhatsApp:", error);
-        res.status(500).send(false);
       });
-  } else {
-    res.status(404).send("WhatsApp não estava conectado.");
   }
 }
 
-export async function getStatusWhatsApp() {
-  return isWhatsAppConnected;
+export async function getStatusWhatsApp(sessionId) {
+  console.log("ol");
+  return isWhatsAppConnected[sessionId] || false;
 }
 
-async function consumeQueueAndSendWhatsapp() {
+export async function consumeQueueAndSendWhatsapp(sessionId) {
   try {
     const connection = await amqp.connect(rabbitMQUrl);
     const channel = await connection.createChannel();
 
-    channel.assertQueue(queueName, { durable: true, autoDelete: true });
-    channel.consume(queueName, async (msg) => {
+    channel.assertQueue(sessionId, { durable: true, autoDelete: true });
+    channel.consume(sessionId, async (msg) => {
       const { message, phone, type } = JSON.parse(
         JSON.parse(msg.content.toString())
       );
@@ -79,28 +87,24 @@ async function consumeQueueAndSendWhatsapp() {
         type === "ficha-de-encerramento" ||
         type === "ficha-de-encerramento-com-garantia"
       ) {
-        await client
+        await clients[sessionId]
           .sendFileFromBase64(to, message, `${type}.pdf`, "")
           .then((result) => {
             console.log(result);
-            return true;
           })
           .catch((erro) => {
             console.error("Error when sending: ", erro);
-            return false;
           });
       }
 
       if (type === "text") {
-        await client
+        await clients[sessionId]
           .sendText(to, message)
           .then((result) => {
             console.log(result);
-            return true;
           })
           .catch((error) => {
             console.error("Erro ao enviar mensagem:", error);
-            return false;
           });
       }
 
@@ -109,5 +113,25 @@ async function consumeQueueAndSendWhatsapp() {
     });
   } catch (error) {
     console.error("Erro ao consumir a fila e enviar pelo WhatsApp:", error);
+  }
+}
+
+export async function sendToQueue(notification, queueName) {
+  try {
+    console.log(queueName);
+    const connection = await amqp.connect(rabbitMQUrl);
+    const channel = await connection.createChannel();
+
+    await channel.assertQueue(queueName, {
+      durable: true,
+      autoDelete: true,
+    });
+    channel.sendToQueue(queueName, Buffer.from(JSON.stringify(notification)));
+
+    console.log("Mensagem enviada para a fila:", notification);
+    return;
+  } catch (error) {
+    console.error("Erro ao enviar para a fila:", error.message);
+    return error;
   }
 }

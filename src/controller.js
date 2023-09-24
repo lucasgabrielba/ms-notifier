@@ -1,17 +1,10 @@
 import { formatWhatsappNumber, deleteTokensFile } from "./helpers.js";
-import {
-  connectToWhatsApp,
-  disconnectWhatsApp,
-  sendToQueue,
-  getStatusWhatsApp,
-} from "./model.js";
+import * as model from "./model.js";
 
 export async function handleQRCode(req, res) {
   try {
-    deleteTokensFile();
-
-    const qrCode = await connectToWhatsApp();
-
+    const { intanceId } = req.params;
+    const qrCode = await model.createWhatsAppInstance(intanceId);
     res.status(200).send(qrCode);
   } catch (error) {
     console.error(error);
@@ -21,7 +14,8 @@ export async function handleQRCode(req, res) {
 
 export async function handleStatus(req, res) {
   try {
-    const status = await getStatusWhatsApp();
+    const { intanceId } = req.params;
+    const status = await model.getStatusWhatsApp(intanceId);
     res.status(200).send(status);
   } catch (error) {
     res.status(500).send("Erro ao verificar o status");
@@ -30,7 +24,8 @@ export async function handleStatus(req, res) {
 
 export async function handleDisconnect(req, res) {
   try {
-    const isDisconnect = await disconnectWhatsApp();
+    const { intanceId } = req.params;
+    const isDisconnect = await model.disconnectWhatsApp(intanceId);
     res.status(200).send(isDisconnect);
   } catch (error) {
     res.status(500).send("Erro ao desconectar WhatsApp");
@@ -38,7 +33,7 @@ export async function handleDisconnect(req, res) {
 }
 
 export async function handleSendToQueue(req, res) {
-  const { message, phone, type } = req.body;
+  const { intanceId, message, phone, type } = req.body;
 
   const notification = JSON.stringify({
     phone: formatWhatsappNumber(phone),
@@ -47,7 +42,7 @@ export async function handleSendToQueue(req, res) {
   });
 
   try {
-    await sendToQueue(notification);
+    await model.sendToQueue(notification, intanceId);
     res.json(true);
   } catch (error) {
     console.error("Erro ao lidar com o envio para a fila:", error);

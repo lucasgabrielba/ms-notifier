@@ -1,7 +1,6 @@
-require("dotenv").config();
-import { fileURLToPath } from "url";
-import path from "path";
-import fs from "fs";
+import { config } from "dotenv";
+import { exec } from "child_process";
+config();
 
 export const venomConfig = {
   browserPathExecutable: "",
@@ -34,12 +33,14 @@ export function formatWhatsappNumber(phone) {
 export const rabbitMQUrl = process.env.RABBIT_MR_URL;
 export const queueName = process.env.QUEUE_NAME;
 
-export function deleteTokensFile() {
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const tokensPath = path.join(__dirname, "tokens");
+export function deleteTokensFile(folderName) {
+  const command = `rm -r tokens/${folderName}`;
 
-  if (fs.existsSync(tokensPath)) {
-    fs.rmdirSync(tokensPath, { recursive: true });
-  }
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Erro ao excluir a pasta '${folderName}':`, error);
+      return;
+    }
+    console.log(`Pasta '${folderName}' excluída com sucesso.`);
+  });
 }
