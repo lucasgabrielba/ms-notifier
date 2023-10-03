@@ -65,7 +65,6 @@ export async function disconnectWhatsApp(sessionId) {
 }
 
 export async function getStatusWhatsApp(sessionId) {
-  console.log("ol");
   return isWhatsAppConnected[sessionId] || false;
 }
 
